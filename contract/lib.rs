@@ -16,6 +16,7 @@ pub mod magink {
     pub struct Magink {
         user: Mapping<AccountId, Profile>,
     }
+
     #[derive(
         Debug, PartialEq, Eq, PartialOrd, Ord, Clone, scale::Encode, scale::Decode,
     )]
@@ -26,8 +27,10 @@ pub mod magink {
     pub struct Profile {
         // duration in blocks until next claim
         claim_era: u8,
+
         // block number of last claim
         start_block: u32,
+
         // number of badges claimed
         badges_claimed: u8,
     }
@@ -49,6 +52,7 @@ pub mod magink {
                 start_block: self.env().block_number(),
                 badges_claimed: 0,
             };
+
             self.user.insert(self.env().caller(), &profile);
         }
 
@@ -59,22 +63,26 @@ pub mod magink {
 
             // update profile
             let mut profile = self.get_profile().ok_or(Error::UserNotFound).unwrap();
+
             profile.badges_claimed += 1;
             profile.start_block = self.env().block_number();
+
             self.user.insert(self.env().caller(), &profile);
+
             Ok(())
         }
 
         /// Returns the remaining blocks in the era.
         #[ink(message)]
         pub fn get_remaining(&self) -> u8 {
-
             let current_block = self.env().block_number();
             let caller = self.env().caller();
-            self.user.get(&caller).map_or(0, |profile| {
+
+            self.user.get(caller).map_or(0, |profile| {
                 if current_block - profile.start_block >= profile.claim_era as u32 {
                     return 0;
                 }
+
                 profile.claim_era - (current_block - profile.start_block) as u8
             })
         }
@@ -82,12 +90,13 @@ pub mod magink {
         /// Returns the remaining blocks in the era for the given account.
         #[ink(message)]
         pub fn get_remaining_for(&self, account: AccountId) -> u8 {
-
             let current_block = self.env().block_number();
-            self.user.get(&account).map_or(0, |profile| {
+
+            self.user.get(account).map_or(0, |profile| {
                 if current_block - profile.start_block >= profile.claim_era as u32 {
                     return 0;
                 }
+
                 profile.claim_era - (current_block - profile.start_block) as u8
             })
         }
@@ -95,28 +104,29 @@ pub mod magink {
         /// Returns the profile of the given account.
         #[ink(message)]
         pub fn get_account_profile(&self, account: AccountId) -> Option<Profile> {
-            self.user.get(&account)
+            self.user.get(account)
         }
-        
+
         /// Returns the profile of the caller.
         #[ink(message)]
         pub fn get_profile(&self) -> Option<Profile> {
             let caller = self.env().caller();
-            self.user.get(&caller)
+            self.user.get(caller)
         }
 
         /// Returns the badge of the caller.
         #[ink(message)]
         pub fn get_badges(&self) -> u8 {
-            self.get_profile().map_or(0, |profile| profile.badges_claimed)
+            self.get_profile()
+                .map_or(0, |profile| profile.badges_claimed)
         }
 
         /// Returns the badge count of the given account.
         #[ink(message)]
         pub fn get_badges_for(&self, account: AccountId) -> u8 {
-            self.get_account_profile(account).map_or(0, |profile| profile.badges_claimed)
+            self.get_account_profile(account)
+                .map_or(0, |profile| profile.badges_claimed)
         }
-
     }
 
     #[cfg(test)]
@@ -137,14 +147,17 @@ pub mod magink {
         fn claim_works() {
             const ERA: u32 = 10;
             let accounts = default_accounts();
+
             let mut magink = Magink::new();
+
             magink.start(ERA as u8);
+
             advance_n_blocks(ERA - 1);
             assert_eq!(1, magink.get_remaining());
 
             // claim fails, too early
             assert_eq!(Err(Error::TooEarlyToClaim), magink.claim());
-            
+
             // claim succeeds
             advance_block();
             assert_eq!(Ok(()), magink.claim());
@@ -152,15 +165,18 @@ pub mod magink {
             assert_eq!(1, magink.get_badges_for(accounts.alice));
             assert_eq!(1, magink.get_badges());
             assert_eq!(10, magink.get_remaining());
-            
+
             // claim fails, too early
             assert_eq!(Err(Error::TooEarlyToClaim), magink.claim());
+
             advance_block();
             assert_eq!(9, magink.get_remaining());
+
             assert_eq!(Err(Error::TooEarlyToClaim), magink.claim());
         }
 
-        fn default_accounts() -> ink::env::test::DefaultAccounts<ink::env::DefaultEnvironment> {
+        fn default_accounts(
+        ) -> ink::env::test::DefaultAccounts<ink::env::DefaultEnvironment> {
             ink::env::test::default_accounts::<Environment>()
         }
 
@@ -172,6 +188,7 @@ pub mod magink {
                 advance_block();
             }
         }
+
         fn advance_block() {
             ink::env::test::advance_block::<ink::env::DefaultEnvironment>();
         }
