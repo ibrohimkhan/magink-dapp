@@ -137,8 +137,10 @@ pub mod magink {
         fn start_works() {
             let mut magink = Magink::new();
             println!("get {:?}", magink.get_remaining());
+
             magink.start(10);
             assert_eq!(10, magink.get_remaining());
+            
             advance_block();
             assert_eq!(9, magink.get_remaining());
         }
