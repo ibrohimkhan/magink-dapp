@@ -1,6 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
 #[allow(clippy::new_without_default)]
-
 #[ink::contract]
 pub mod magink {
     use crate::ensure;
