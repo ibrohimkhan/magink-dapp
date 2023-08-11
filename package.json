@@ -1,7 +1,7 @@
 {
-  "name": "contract",
+  "name": "magink-dapp",
   "version": "1.0.0",
-  "author": "	Mar.io",
+  "author": "	Astar",
   "license": "MIT",
   "scripts": {
     "run-node": "swanky node start",
