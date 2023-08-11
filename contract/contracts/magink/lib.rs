@@ -1,4 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
+#[allow(clippy::new_without_default)]
 
 #[ink::contract]
 pub mod magink {
@@ -80,7 +81,7 @@ pub mod magink {
 
             self.user.get(caller).map_or(0, |profile| {
                 if current_block - profile.start_block >= profile.claim_era as u32 {
-                    return 0;
+                    return 0
                 }
 
                 profile.claim_era - (current_block - profile.start_block) as u8
@@ -94,7 +95,7 @@ pub mod magink {
 
             self.user.get(account).map_or(0, |profile| {
                 if current_block - profile.start_block >= profile.claim_era as u32 {
-                    return 0;
+                    return 0
                 }
 
                 profile.claim_era - (current_block - profile.start_block) as u8
@@ -140,7 +141,7 @@ pub mod magink {
 
             magink.start(10);
             assert_eq!(10, magink.get_remaining());
-            
+
             advance_block();
             assert_eq!(9, magink.get_remaining());
         }
@@ -204,7 +205,7 @@ pub mod magink {
 macro_rules! ensure {
     ( $x:expr, $y:expr $(,)? ) => {{
         if !$x {
-            return Err($y.into());
+            return Err($y.into())
         }
     }};
 }
