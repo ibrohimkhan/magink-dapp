@@ -13,6 +13,9 @@ scale-info = { version = "2.6", default-features = false, features = ["derive"],
 # Include brush as a dependency and enable default implementation for PSP22 via brush feature
 openbrush = { tag = "4.0.0-beta", git = "https://github.com/Brushfam/openbrush-contracts", default-features = false, features = ["psp34", "ownable"] }
 
+[dev-dependencies]
+ink_e2e = "4.2.1"
+
 [lib]
 path = "lib.rs"
 
@@ -26,3 +29,4 @@ std = [
     "openbrush/std",
 ]
 ink-as-dependency = []
+e2e-tests = []
