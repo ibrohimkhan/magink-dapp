@@ -53,18 +53,14 @@ pub mod wizard {
         id: Id,
     }
 
-    #[ink(event)]
-    pub struct Approval {
-        #[ink(topic)]
-        from: AccountId,
-
-        #[ink(topic)]
-        to: AccountId,
-
-        #[ink(topic)]
-        id: Option<Id>,
-
-        approved: bool,
+    #[overrider(psp34::Internal)]
+    fn _emit_transfer_event(
+        &self,
+        from: Option<AccountId>,
+        to: Option<AccountId>,
+        id: Id,
+    ) {
+        self.env().emit_event(Transfer { from, to, id });
     }
 
     #[overrider(PSP34Mintable)]
@@ -78,32 +74,6 @@ pub mod wizard {
         let id = Id::U64(self.last_token_id);
 
         psp34::InternalImpl::_mint_to(self, account, id)
-    }
-
-    #[overrider(psp34::Internal)]
-    fn _emit_transfer_event(
-        &self,
-        from: Option<AccountId>,
-        to: Option<AccountId>,
-        id: Id,
-    ) {
-        self.env().emit_event(Transfer { from, to, id });
-    }
-
-    #[overrider(psp34::Internal)]
-    fn _emit_approval_event(
-        &self,
-        from: AccountId,
-        to: AccountId,
-        id: Option<Id>,
-        approved: bool,
-    ) {
-        self.env().emit_event(Approval {
-            from,
-            to,
-            id,
-            approved,
-        });
     }
 
     impl Wizard {
@@ -320,7 +290,7 @@ pub mod wizard {
                 Ok(Id::U64(2))
             );
 
-            // assert_eq!(1, ink::env::test::recorded_events().count());
+            assert_eq!(2, ink::env::test::recorded_events().count());
         }
 
         #[ink::test]
