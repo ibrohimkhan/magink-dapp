@@ -10,10 +10,16 @@
 #[openbrush::contract]
 pub mod wizard {
 
+    use ink::prelude::string::{
+        String,
+        ToString,
+    };
+
     use ink::codegen::{
         EmitEvent,
         Env,
     };
+
     use openbrush::traits::Storage;
 
     #[ink(storage)]
@@ -65,7 +71,7 @@ pub mod wizard {
     #[openbrush::modifiers(only_owner)]
     fn mint(&mut self, account: AccountId, id: Id) -> Result<(), PSP34Error> {
         if self.last_token_id + 1 >= self.max_supply {
-            return Err(PSP34Error::Custom("CollectionFull".to_string()))
+            return Err(PSP34Error::Custom(String::from("CollectionFull")))
         }
 
         self.last_token_id += 1;
@@ -205,7 +211,7 @@ pub mod wizard {
                 String::from("name"),
             ) {
                 Some(value) => Ok(value),
-                None => Ok("".to_string()),
+                None => Ok(String::from("")),
             }
         }
 
@@ -223,7 +229,7 @@ pub mod wizard {
                 String::from("symbol"),
             ) {
                 Some(value) => Ok(value),
-                None => Ok("".to_string()),
+                None => Ok(String::from("")),
             }
         }
     }
@@ -338,7 +344,7 @@ pub mod wizard {
 
             assert_eq!(
                 PSP34Mintable::mint(&mut wizard, accounts.bob, Id::U64(id)),
-                Err(PSP34Error::Custom("CollectionFull".to_string()))
+                Err(PSP34Error::Custom(String::from("CollectionFull")))
             );
         }
 
