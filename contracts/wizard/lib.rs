@@ -1,5 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
 
+pub use self::wizard::WizardRef;
+
 #[openbrush::implementation(
     PSP34,
     Ownable,
@@ -119,6 +121,20 @@ pub mod wizard {
         #[ink(message)]
         pub fn max_supply(&self) -> u64 {
             self.max_supply
+        }
+
+        #[ink(message)]
+        pub fn last_token_id(&self) -> Id {
+            Id::U64(self.last_token_id)
+        }
+
+        #[ink(message)]
+        pub fn mint_token(
+            &mut self,
+            account: AccountId,
+            id: Id,
+        ) -> Result<(), PSP34Error> {
+            PSP34Mintable::mint(self, account, id)
         }
 
         #[ink(message)]
@@ -276,7 +292,7 @@ pub mod wizard {
             assert_eq!(Ownable::owner(&wizard).unwrap(), accounts.alice);
 
             let id = wizard.last_token_id;
-            assert!(PSP34Mintable::mint(&mut wizard, accounts.bob, Id::U64(id)).is_ok());
+            assert!(wizard.mint_token(accounts.bob, Id::U64(id)).is_ok());
 
             assert_eq!(wizard.last_token_id, 2);
             assert_eq!(PSP34Impl::total_supply(&wizard), 2);
@@ -299,21 +315,21 @@ pub mod wizard {
             let accounts = default_accounts();
 
             let id = wizard.last_token_id;
-            assert!(PSP34Mintable::mint(&mut wizard, accounts.bob, Id::U64(id)).is_ok());
+            assert!(wizard.mint_token(accounts.bob, Id::U64(id)).is_ok());
 
             let id = wizard.last_token_id;
-            assert!(PSP34Mintable::mint(&mut wizard, accounts.bob, Id::U64(id)).is_ok());
+            assert!(wizard.mint_token(accounts.bob, Id::U64(id)).is_ok());
 
             let id = wizard.last_token_id;
-            assert!(PSP34Mintable::mint(&mut wizard, accounts.bob, Id::U64(id)).is_ok());
+            assert!(wizard.mint_token(accounts.bob, Id::U64(id)).is_ok());
             assert_eq!(wizard.last_token_id, 4);
 
             let id = wizard.last_token_id;
-            assert!(PSP34Mintable::mint(&mut wizard, accounts.bob, Id::U64(id)).is_err());
+            assert!(wizard.mint_token(accounts.bob, Id::U64(id)).is_err());
             assert_eq!(wizard.last_token_id, 4);
 
             assert_eq!(
-                PSP34Mintable::mint(&mut wizard, accounts.bob, Id::U64(id)),
+                wizard.mint_token(accounts.bob, Id::U64(id)),
                 Err(PSP34Error::Custom(String::from("CollectionFull")))
             );
         }
@@ -324,7 +340,7 @@ pub mod wizard {
             let accounts = default_accounts();
 
             let id = wizard.last_token_id;
-            assert!(PSP34Mintable::mint(&mut wizard, accounts.bob, Id::U64(id)).is_ok());
+            assert!(wizard.mint_token(accounts.bob, Id::U64(id)).is_ok());
 
             assert_eq!(wizard.token_uri(42), Err(PSP34Error::TokenNotExists));
             assert_eq!(
@@ -339,7 +355,7 @@ pub mod wizard {
             let accounts = default_accounts();
 
             let id = wizard.last_token_id;
-            assert!(PSP34Mintable::mint(&mut wizard, accounts.bob, Id::U64(id)).is_ok());
+            assert!(wizard.mint_token(accounts.bob, Id::U64(id)).is_ok());
 
             assert_eq!(wizard.token_name(42), Err(PSP34Error::TokenNotExists));
             assert_eq!(wizard.token_name(2), Ok(String::from("Wizard34")));
@@ -351,7 +367,7 @@ pub mod wizard {
             let accounts = default_accounts();
 
             let id = wizard.last_token_id;
-            assert!(PSP34Mintable::mint(&mut wizard, accounts.bob, Id::U64(id)).is_ok());
+            assert!(wizard.mint_token(accounts.bob, Id::U64(id)).is_ok());
 
             assert_eq!(wizard.token_symbol(42), Err(PSP34Error::TokenNotExists));
             assert_eq!(wizard.token_symbol(2), Ok(String::from("WZ34")));

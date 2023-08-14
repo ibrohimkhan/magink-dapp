@@ -10,6 +10,11 @@ ink = { version = "4.2.1", default-features = false }
 scale = { package = "parity-scale-codec", version = "3", default-features = false, features = ["derive"] }
 scale-info = { version = "2.5", default-features = false, features = ["derive"], optional = true }
 
+wizard = { path = "../wizard", default-features = false, features = ["ink-as-dependency"] }
+
+[dev-dependencies]
+ink_e2e = "4.2.1"
+
 [lib]
 path = "lib.rs"
 
@@ -18,7 +23,8 @@ default = ["std"]
 std = [
     "ink/std",
     "scale/std",
-    "scale-info/std"
+    "scale-info/std",
+    "wizard/std"
 ]
 ink-as-dependency = []
 e2e-tests = []

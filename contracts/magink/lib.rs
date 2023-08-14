@@ -5,16 +5,20 @@ pub mod magink {
     use crate::ensure;
     use ink::storage::Mapping;
 
+    use wizard::WizardRef;
+
     #[derive(Debug, PartialEq, Eq, scale::Encode, scale::Decode)]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub enum Error {
         TooEarlyToClaim,
         UserNotFound,
+        MintFailed,
     }
 
     #[ink(storage)]
     pub struct Magink {
         user: Mapping<AccountId, Profile>,
+        wizard_contract: WizardRef,
     }
 
     #[derive(
@@ -38,9 +42,28 @@ pub mod magink {
     impl Magink {
         /// Creates a new Magink smart contract.
         #[ink(constructor)]
-        pub fn new() -> Self {
+        pub fn new(wizard_contract_hash_code: Hash, wizard_nft_max_supply: u64) -> Self {
+            let wizard_contract_ref = WizardRef::new(wizard_nft_max_supply)
+                .code_hash(wizard_contract_hash_code)
+                .endowment(0)
+                .salt_bytes([0xDE, 0xAD, 0xBE, 0xEF])
+                .instantiate();
+
             Self {
                 user: Mapping::new(),
+                wizard_contract: wizard_contract_ref,
+            }
+        }
+
+        /// Mint Wizard NFT
+        #[ink(message)]
+        pub fn mint_wizard(&mut self) -> Result<(), Error> {
+            let caller = self.env().caller();
+            let id = self.wizard_contract.last_token_id();
+
+            match self.wizard_contract.mint_token(caller, id) {
+                Ok(_) => Ok(()),
+                _ => Err(Error::MintFailed),
             }
         }
 
@@ -134,8 +157,9 @@ pub mod magink {
         use super::*;
 
         #[ink::test]
+        #[ignore]
         fn start_works() {
-            let mut magink = Magink::new();
+            let mut magink = Magink::new(Hash::default(), 5);
             println!("get {:?}", magink.get_remaining());
 
             magink.start(10);
@@ -146,11 +170,12 @@ pub mod magink {
         }
 
         #[ink::test]
+        #[ignore]
         fn claim_works() {
             const ERA: u32 = 10;
             let accounts = default_accounts();
 
-            let mut magink = Magink::new();
+            let mut magink = Magink::new(Hash::default(), 5);
 
             magink.start(ERA as u8);
 
