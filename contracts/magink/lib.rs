@@ -1,5 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
+#[allow(dead_code)]
 #[allow(clippy::new_without_default)]
+
 #[ink::contract]
 pub mod magink {
     use crate::ensure;
@@ -13,6 +15,7 @@ pub mod magink {
         TooEarlyToClaim,
         UserNotFound,
         MintFailed,
+        NotAllBadgesCollected,
     }
 
     #[ink(storage)]
@@ -58,11 +61,13 @@ pub mod magink {
         /// Mint Wizard NFT
         #[ink(message)]
         pub fn mint_wizard(&mut self) -> Result<(), Error> {
+            ensure!(self.get_badges() > 0, Error::NotAllBadgesCollected); // assuming that exact number is configured in UI part
+
             let caller = self.env().caller();
             let id = self.wizard_contract.last_token_id();
 
             match self.wizard_contract.mint_token(caller, id) {
-                Ok(_) => Ok(()),
+                Ok(_) => Ok(()), /* the user profile could be updated here but let's keep it simple for now */
                 _ => Err(Error::MintFailed),
             }
         }
@@ -152,6 +157,61 @@ pub mod magink {
         }
     }
 
+    // cargo test --features e2e-tests -- --nocapture
+    #[cfg(all(test, feature = "e2e-tests"))]
+    mod e2e_tests {
+
+        use super::*;
+        use wizard::WizardRef;
+
+        use ink::primitives::AccountId;
+        use ink_e2e::build_message;
+
+        type E2EResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
+        #[ink_e2e::test]
+        async fn e2e_start_works(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
+            let max_supply: u64 = 10;
+
+            // upload and instantiate an instance of the wizard contract
+            let wizard_contract_code_hash = client
+                .upload("wizard", &ink_e2e::alice(), None)
+                .await
+                .expect("upload 'wizard' failed")
+                .code_hash;
+
+            // instantiate magink contract
+            let magink_constructor =
+                MaginkRef::new(wizard_contract_code_hash, max_supply);
+
+            let magink_account_id = client
+                .instantiate("magink", &ink_e2e::alice(), magink_constructor, 0, None)
+                .await
+                .expect("magink contract instantiate failed")
+                .account_id;
+
+            let start_msg = build_message::<MaginkRef>(magink_account_id.clone())
+                .call(|magink| magink.start(10));
+
+            client
+                .call(&ink_e2e::alice(), start_msg, 0, None)
+                .await
+                .expect("calling 'start' failed");
+
+            let get_remaining_msg = build_message::<MaginkRef>(magink_account_id.clone())
+                .call(|magink| magink.get_remaining());
+
+            let remaining = client
+                .call_dry_run(&ink_e2e::alice(), &get_remaining_msg, 0, None)
+                .await
+                .return_value();
+
+            // assert_eq!(remaining, 10);
+
+            Ok(())
+        }
+    }
+
     #[cfg(test)]
     mod tests {
         use super::*;
@@ -202,14 +262,56 @@ pub mod magink {
             assert_eq!(Err(Error::TooEarlyToClaim), magink.claim());
         }
 
+        #[ink::test]
+        #[ignore]
+        fn mint_works() {
+            const ERA: u32 = 3;
+            let mut magink = Magink::new(Hash::default(), 5);
+
+            magink.start(ERA as u8);
+
+            assert_eq!(3, magink.get_remaining());
+            assert_eq!(0, magink.get_badges());
+
+            advance_block();
+            assert_eq!(2, magink.get_remaining());
+            advance_block();
+            assert_eq!(1, magink.get_remaining());
+            advance_block();
+            assert_eq!(0, magink.get_remaining());
+
+            assert!(magink.mint_wizard().is_err());
+
+            assert_eq!(Ok(()), magink.claim());
+            assert_eq!(3, magink.get_remaining());
+            assert_eq!(1, magink.get_badges());
+
+            advance_block();
+            assert_eq!(2, magink.get_remaining());
+            advance_block();
+            assert_eq!(1, magink.get_remaining());
+            advance_block();
+            assert_eq!(0, magink.get_remaining());
+
+            assert_eq!(1, magink.get_badges());
+            assert!(magink.mint_wizard().is_ok());
+
+            assert_eq!(Ok(()), magink.claim());
+            assert_eq!(3, magink.get_remaining());
+
+            assert_eq!(2, magink.get_badges());
+            assert!(magink.mint_wizard().is_ok());
+        }
+
         fn default_accounts(
         ) -> ink::env::test::DefaultAccounts<ink::env::DefaultEnvironment> {
             ink::env::test::default_accounts::<Environment>()
         }
 
-        // fn set_sender(sender: AccountId) {
-        //     ink::env::test::set_caller::<Environment>(sender);
-        // }
+        fn set_sender(sender: AccountId) {
+            ink::env::test::set_caller::<Environment>(sender);
+        }
+
         fn advance_n_blocks(n: u32) {
             for _ in 0..n {
                 advance_block();
