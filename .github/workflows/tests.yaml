@@ -58,4 +58,4 @@ jobs:
       run: swanky contract compile --all -v
 
     - name: Test contracts
-      run: cargo test
+      run: cargo test --features e2e-tests

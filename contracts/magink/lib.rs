@@ -1,13 +1,19 @@
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
 #[allow(dead_code)]
 #[allow(clippy::new_without_default)]
-
 #[ink::contract]
 pub mod magink {
     use crate::ensure;
     use ink::storage::Mapping;
 
-    use wizard::WizardRef;
+    use ink::env::{
+        call::{
+            build_call,
+            ExecutionInput,
+            Selector,
+        },
+        DefaultEnvironment,
+    };
 
     #[derive(Debug, PartialEq, Eq, scale::Encode, scale::Decode)]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
@@ -16,12 +22,13 @@ pub mod magink {
         UserNotFound,
         MintFailed,
         NotAllBadgesCollected,
+        ContractCallFailed,
     }
 
     #[ink(storage)]
     pub struct Magink {
         user: Mapping<AccountId, Profile>,
-        wizard_contract: WizardRef,
+        wizard_contract_account_id: AccountId,
     }
 
     #[derive(
@@ -45,16 +52,10 @@ pub mod magink {
     impl Magink {
         /// Creates a new Magink smart contract.
         #[ink(constructor)]
-        pub fn new(wizard_contract_hash_code: Hash, wizard_nft_max_supply: u64) -> Self {
-            let wizard_contract_ref = WizardRef::new(wizard_nft_max_supply)
-                .code_hash(wizard_contract_hash_code)
-                .endowment(0)
-                .salt_bytes([0xDE, 0xAD, 0xBE, 0xEF])
-                .instantiate();
-
+        pub fn new(account_id: AccountId) -> Self {
             Self {
                 user: Mapping::new(),
-                wizard_contract: wizard_contract_ref,
+                wizard_contract_account_id: account_id,
             }
         }
 
@@ -63,12 +64,35 @@ pub mod magink {
         pub fn mint_wizard(&mut self) -> Result<(), Error> {
             ensure!(self.get_badges() > 0, Error::NotAllBadgesCollected); // assuming that exact number is configured in UI part
 
-            let caller = self.env().caller();
-            let id = self.wizard_contract.last_token_id();
+            let last_token_id = match build_call::<DefaultEnvironment>()
+                .call(self.wizard_contract_account_id)
+                .gas_limit(5000000000)
+                .exec_input(ExecutionInput::new(Selector::new(ink::selector_bytes!(
+                    "last_token_id"
+                ))))
+                .returns::<u64>()
+                .try_invoke()
+            {
+                Ok(Ok(id)) => id,
+                _ => return Err(Error::ContractCallFailed),
+            };
 
-            match self.wizard_contract.mint_token(caller, id) {
-                Ok(_) => Ok(()), /* the user profile could be updated here but let's keep it simple for now */
-                _ => Err(Error::MintFailed),
+            let caller = self.env().caller();
+            match build_call::<DefaultEnvironment>()
+                .call(self.wizard_contract_account_id)
+                .gas_limit(5000000000)
+                .exec_input(
+                    ExecutionInput::new(Selector::new(ink::selector_bytes!(
+                        "mint_token"
+                    )))
+                    .push_arg(caller)
+                    .push_arg(last_token_id),
+                )
+                .returns::<()>()
+                .try_invoke()
+            {
+                Ok(Ok(_)) => Ok(()),
+                _ => Err(Error::ContractCallFailed),
             }
         }
 
@@ -142,6 +166,14 @@ pub mod magink {
             self.user.get(caller)
         }
 
+        /// Update the profile of the caller
+        #[ink(message)]
+        pub fn set_profile(&mut self, profile: Profile) -> Result<(), Error> {
+            self.user.insert(self.env().caller(), &profile);
+
+            Ok(())
+        }
+
         /// Returns the badge of the caller.
         #[ink(message)]
         pub fn get_badges(&self) -> u8 {
@@ -164,25 +196,25 @@ pub mod magink {
         use super::*;
         use wizard::WizardRef;
 
-        use ink::primitives::AccountId;
         use ink_e2e::build_message;
 
         type E2EResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
         #[ink_e2e::test]
-        async fn e2e_start_works(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
+        async fn e2e_mint_works(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
             let max_supply: u64 = 10;
 
-            // upload and instantiate an instance of the wizard contract
-            let wizard_contract_code_hash = client
-                .upload("wizard", &ink_e2e::alice(), None)
+            // instantiate wizard contract
+            let wizard_constructor = WizardRef::new(max_supply);
+
+            let wizard_account_id = client
+                .instantiate("wizard", &ink_e2e::alice(), wizard_constructor, 0, None)
                 .await
-                .expect("upload 'wizard' failed")
-                .code_hash;
+                .expect("wizard contract instantiate failed")
+                .account_id;
 
             // instantiate magink contract
-            let magink_constructor =
-                MaginkRef::new(wizard_contract_code_hash, max_supply);
+            let magink_constructor = MaginkRef::new(wizard_account_id);
 
             let magink_account_id = client
                 .instantiate("magink", &ink_e2e::alice(), magink_constructor, 0, None)
@@ -191,7 +223,7 @@ pub mod magink {
                 .account_id;
 
             let start_msg = build_message::<MaginkRef>(magink_account_id.clone())
-                .call(|magink| magink.start(10));
+                .call(|magink| magink.start(2));
 
             client
                 .call(&ink_e2e::alice(), start_msg, 0, None)
@@ -206,7 +238,46 @@ pub mod magink {
                 .await
                 .return_value();
 
-            // assert_eq!(remaining, 10);
+            assert_eq!(remaining, 2);
+
+            let claim_msg = build_message::<MaginkRef>(magink_account_id.clone())
+                .call(|magink| magink.claim());
+
+            let result = client
+                .call_dry_run(&ink_e2e::alice(), &claim_msg, 0, None)
+                .await
+                .return_value();
+
+            assert_eq!(result, Err(Error::TooEarlyToClaim));
+
+            // to pass the ensure check in mint_wizard we need to update user's profile
+            let get_profile_msg = build_message::<MaginkRef>(magink_account_id.clone())
+                .call(|magink| magink.get_profile());
+
+            let mut profile = client
+                .call_dry_run(&ink_e2e::alice(), &get_profile_msg, 0, None)
+                .await
+                .return_value()
+                .unwrap();
+
+            profile.badges_claimed += 2;
+
+            let set_profile_msg = build_message::<MaginkRef>(magink_account_id.clone())
+                .call(|magink| magink.set_profile(profile.clone()));
+
+            client
+                .call(&ink_e2e::alice(), set_profile_msg, 0, None)
+                .await
+                .expect("calling set_profile failed");
+
+            // mint new token
+            let mint_wizard_msg = build_message::<MaginkRef>(magink_account_id.clone())
+                .call(|magink| magink.mint_wizard());
+
+            client
+                .call(&ink_e2e::alice(), mint_wizard_msg, 0, None)
+                .await
+                .expect("calling mint_wizard failed");
 
             Ok(())
         }
@@ -217,9 +288,8 @@ pub mod magink {
         use super::*;
 
         #[ink::test]
-        #[ignore]
         fn start_works() {
-            let mut magink = Magink::new(Hash::default(), 5);
+            let mut magink = Magink::new(AccountId::from([0x01; 32]));
             println!("get {:?}", magink.get_remaining());
 
             magink.start(10);
@@ -230,12 +300,11 @@ pub mod magink {
         }
 
         #[ink::test]
-        #[ignore]
         fn claim_works() {
             const ERA: u32 = 10;
             let accounts = default_accounts();
 
-            let mut magink = Magink::new(Hash::default(), 5);
+            let mut magink = Magink::new(AccountId::from([0x01; 32]));
 
             magink.start(ERA as u8);
 
@@ -263,10 +332,9 @@ pub mod magink {
         }
 
         #[ink::test]
-        #[ignore]
-        fn mint_works() {
+        fn mint_check_works_offchain_contract_call_fails() {
             const ERA: u32 = 3;
-            let mut magink = Magink::new(Hash::default(), 5);
+            let mut magink = Magink::new(AccountId::from([0x01; 32]));
 
             magink.start(ERA as u8);
 
@@ -280,7 +348,9 @@ pub mod magink {
             advance_block();
             assert_eq!(0, magink.get_remaining());
 
+            // mint wizard returns error since not all badges are collected
             assert!(magink.mint_wizard().is_err());
+            assert_eq!(magink.mint_wizard(), Err(Error::NotAllBadgesCollected));
 
             assert_eq!(Ok(()), magink.claim());
             assert_eq!(3, magink.get_remaining());
@@ -294,13 +364,30 @@ pub mod magink {
             assert_eq!(0, magink.get_remaining());
 
             assert_eq!(1, magink.get_badges());
-            assert!(magink.mint_wizard().is_ok());
 
-            assert_eq!(Ok(()), magink.claim());
-            assert_eq!(3, magink.get_remaining());
+            // panics due to off-chain environment does not support contract invocation
+            let result = std::panic::catch_unwind(move || magink.mint_wizard());
 
-            assert_eq!(2, magink.get_badges());
-            assert!(magink.mint_wizard().is_ok());
+            assert!(result.is_err());
+        }
+
+        #[ink::test]
+        fn set_profile_works() {
+            let accounts = default_accounts();
+
+            let mut magink = Magink::new(AccountId::from([0x01; 32]));
+
+            set_sender(accounts.alice);
+            magink.start(2);
+
+            let mut profile = magink.get_profile().unwrap();
+            assert_eq!(profile.badges_claimed, 0);
+
+            profile.badges_claimed += 2;
+            assert!(magink.set_profile(profile).is_ok());
+
+            let profile = magink.get_profile().unwrap();
+            assert_eq!(profile.badges_claimed, 2);
         }
 
         fn default_accounts(
