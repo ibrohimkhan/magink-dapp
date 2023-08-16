@@ -57,5 +57,10 @@ jobs:
     - name: Compile contracts
       run: swanky contract compile --all -v
 
+    - name: Install and run latest `substrate-contracts-node` binary
+      run: |
+          cargo install contracts-node --git https://github.com/paritytech/substrate-contracts-node.git --force --locked && \
+          substrate-contracts-node
+
     - name: Test contracts
       run: cargo test --features e2e-tests
