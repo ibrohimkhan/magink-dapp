@@ -22,7 +22,8 @@ pub mod magink {
         UserNotFound,
         MintFailed,
         NotAllBadgesCollected,
-        ContractCallFailed,
+        LastTokenIdCallFailed,
+        MintTokenCallFailed,
     }
 
     #[ink(storage)]
@@ -66,7 +67,7 @@ pub mod magink {
 
             let last_token_id = match build_call::<DefaultEnvironment>()
                 .call(self.wizard_contract_account_id)
-                .gas_limit(5000000000)
+                .gas_limit(0)
                 .exec_input(ExecutionInput::new(Selector::new(ink::selector_bytes!(
                     "last_token_id"
                 ))))
@@ -74,13 +75,13 @@ pub mod magink {
                 .try_invoke()
             {
                 Ok(Ok(id)) => id,
-                _ => return Err(Error::ContractCallFailed),
+                _ => return Err(Error::LastTokenIdCallFailed),
             };
 
             let caller = self.env().caller();
             match build_call::<DefaultEnvironment>()
                 .call(self.wizard_contract_account_id)
-                .gas_limit(5000000000)
+                .gas_limit(0)
                 .exec_input(
                     ExecutionInput::new(Selector::new(ink::selector_bytes!(
                         "mint_token"
@@ -92,7 +93,7 @@ pub mod magink {
                 .try_invoke()
             {
                 Ok(Ok(_)) => Ok(()),
-                _ => Err(Error::ContractCallFailed),
+                _ => Err(Error::MintTokenCallFailed),
             }
         }
 
