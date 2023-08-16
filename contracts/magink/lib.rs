@@ -1,5 +1,4 @@
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
-#[allow(dead_code)]
 #[allow(clippy::new_without_default)]
 #[ink::contract]
 pub mod magink {
@@ -22,7 +21,6 @@ pub mod magink {
         UserNotFound,
         MintFailed,
         NotAllBadgesCollected,
-        LastTokenIdCallFailed,
         MintTokenCallFailed,
     }
 
@@ -62,21 +60,8 @@ pub mod magink {
 
         /// Mint Wizard NFT
         #[ink(message)]
-        pub fn mint_wizard(&mut self) -> Result<(), Error> {
+        pub fn mint_wizard(&self) -> Result<(), Error> {
             ensure!(self.get_badges() > 0, Error::NotAllBadgesCollected); // assuming that exact number is configured in UI part
-
-            let last_token_id = match build_call::<DefaultEnvironment>()
-                .call(self.wizard_contract_account_id)
-                .gas_limit(0)
-                .exec_input(ExecutionInput::new(Selector::new(ink::selector_bytes!(
-                    "last_token_id"
-                ))))
-                .returns::<u64>()
-                .try_invoke()
-            {
-                Ok(Ok(id)) => id,
-                _ => return Err(Error::LastTokenIdCallFailed),
-            };
 
             let caller = self.env().caller();
             match build_call::<DefaultEnvironment>()
@@ -86,8 +71,7 @@ pub mod magink {
                     ExecutionInput::new(Selector::new(ink::selector_bytes!(
                         "mint_token"
                     )))
-                    .push_arg(caller)
-                    .push_arg(last_token_id),
+                    .push_arg(caller),
                 )
                 .returns::<()>()
                 .try_invoke()
@@ -199,10 +183,7 @@ pub mod magink {
 
         use ink_e2e::build_message;
 
-        use openbrush::contracts::{
-            ownable::ownable_external::Ownable,
-            psp34::psp34_external::PSP34,
-        };
+        use openbrush::contracts::ownable::ownable_external::Ownable;
 
         type E2EResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -318,6 +299,17 @@ pub mod magink {
                 .return_value();
 
             assert!(result.is_ok());
+
+            let expected_total_supply = 1;
+            let actual_total_supply = {
+                let _msg = build_message::<WizardRef>(wizard_account_id.clone())
+                    .call(|contract| contract.total_supply());
+
+                client.call_dry_run(&ink_e2e::alice(), &_msg, 0, None).await
+            };
+
+            // this should be failed since after minting a new token the total supply should be increased, but it's not - why?
+            assert_eq!(expected_total_supply, actual_total_supply.return_value());
 
             Ok(())
         }
