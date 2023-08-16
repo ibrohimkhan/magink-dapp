@@ -61,8 +61,8 @@ jobs:
       run: |
           curl -L -o substrate-contracts-node.tar.gz 'https://github.com/paritytech/substrate-contracts-node/releases/download/v0.30.0/substrate-contracts-node-linux.tar.gz' && \
           tar -xf substrate-contracts-node.tar.gz && \
-          chmod +x artifacts/substrate-contracts-node-linux/substrate-contracts-node &&
-          pwd && export CONTRACTS_NODE=$HOME/artifacts/substrate-contracts-node-linux/ &&
+          chmod +x artifacts/substrate-contracts-node-linux/substrate-contracts-node && \
+          pwd && export CONTRACTS_NODE=$HOME/artifacts/substrate-contracts-node-linux/ && \
           ./artifacts/substrate-contracts-node-linux/substrate-contracts-node -linfo,runtime::contracts=debug  2>&1 | tee /tmp/contracts-node.log &
 
     # - name: Download Swanky-node
