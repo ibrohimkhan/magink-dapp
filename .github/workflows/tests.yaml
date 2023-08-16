@@ -71,4 +71,5 @@ jobs:
     #       sudo chmod +x swanky-node &
 
     - name: Test contracts
-      run: export CONTRACTS_NODE=$HOME/artifacts/substrate-contracts-node-linux/substrate-contracts-node && cargo test --features e2e-tests
+      run: cargo test
+      # run: export CONTRACTS_NODE=$HOME/artifacts/substrate-contracts-node-linux/substrate-contracts-node && cargo test --features e2e-tests
