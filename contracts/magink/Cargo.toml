@@ -10,6 +10,9 @@ ink = { version = "4.2.1", default-features = false }
 scale = { package = "parity-scale-codec", version = "3", default-features = false, features = ["derive"] }
 scale-info = { version = "2.5", default-features = false, features = ["derive"], optional = true }
 
+# Include brush as a dependency and enable default implementation for PSP22 via brush feature
+openbrush = { tag = "4.0.0-beta", git = "https://github.com/Brushfam/openbrush-contracts", default-features = false, features = ["psp34", "ownable"] }
+
 wizard = { path = "../wizard", default-features = false, features = ["ink-as-dependency"] }
 
 [dev-dependencies]
@@ -24,6 +27,7 @@ std = [
     "ink/std",
     "scale/std",
     "scale-info/std",
+    "openbrush/std",
     "wizard/std"
 ]
 ink-as-dependency = []

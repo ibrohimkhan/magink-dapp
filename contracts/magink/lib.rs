@@ -198,6 +198,11 @@ pub mod magink {
 
         use ink_e2e::build_message;
 
+        use openbrush::contracts::{
+            ownable::ownable_external::Ownable,
+            psp34::psp34_external::PSP34,
+        };
+
         type E2EResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
         #[ink_e2e::test]
@@ -213,6 +218,16 @@ pub mod magink {
                 .expect("wizard contract instantiate failed")
                 .account_id;
 
+            let expected_total_supply = 1;
+            let actual_total_supply = {
+                let _msg = build_message::<WizardRef>(wizard_account_id.clone())
+                    .call(|contract| contract.total_supply());
+
+                client.call_dry_run(&ink_e2e::alice(), &_msg, 0, None).await
+            };
+
+            assert_eq!(expected_total_supply, actual_total_supply.return_value());
+
             // instantiate magink contract
             let magink_constructor = MaginkRef::new(wizard_account_id);
 
@@ -222,6 +237,28 @@ pub mod magink {
                 .expect("magink contract instantiate failed")
                 .account_id;
 
+            // transfer ownership to magink
+            let change_owner = build_message::<WizardRef>(wizard_account_id.clone())
+                .call(|p| p.transfer_ownership(magink_account_id));
+
+            client
+                .call(&ink_e2e::alice(), change_owner, 0, None)
+                .await
+                .expect("calling transfer_ownership failed");
+
+            // verfy it
+            let owner =
+                build_message::<WizardRef>(wizard_account_id.clone()).call(|p| p.owner());
+
+            let owner_result = client
+                .call_dry_run(&ink_e2e::alice(), &owner, 0, None)
+                .await
+                .return_value()
+                .unwrap();
+
+            assert_eq!(owner_result, magink_account_id);
+
+            // start
             let start_msg = build_message::<MaginkRef>(magink_account_id.clone())
                 .call(|magink| magink.start(2));
 
@@ -274,10 +311,12 @@ pub mod magink {
             let mint_wizard_msg = build_message::<MaginkRef>(magink_account_id.clone())
                 .call(|magink| magink.mint_wizard());
 
-            client
-                .call(&ink_e2e::alice(), mint_wizard_msg, 0, None)
+            let result = client
+                .call_dry_run(&ink_e2e::alice(), &mint_wizard_msg, 0, None)
                 .await
-                .expect("calling mint_wizard failed");
+                .return_value();
+
+            assert!(result.is_ok());
 
             Ok(())
         }

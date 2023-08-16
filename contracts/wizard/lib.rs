@@ -129,6 +129,7 @@ pub mod wizard {
         }
 
         #[ink(message)]
+        #[openbrush::modifiers(only_owner)]
         pub fn mint_token(
             &mut self,
             account: AccountId,
