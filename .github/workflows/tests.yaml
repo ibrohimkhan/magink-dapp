@@ -62,7 +62,7 @@ jobs:
           curl -L -o substrate-contracts-node.tar.gz 'https://github.com/paritytech/substrate-contracts-node/releases/download/v0.30.0/substrate-contracts-node-linux.tar.gz' && \
           tar -xf substrate-contracts-node.tar.gz && \
           chmod +x artifacts/substrate-contracts-node-linux/substrate-contracts-node &&
-          ./artifacts/substrate-contracts-node-linux/substrate-contracts-node
+          ./artifacts/substrate-contracts-node-linux/substrate-contracts-node -linfo,runtime::contracts=debug  2>&1 | tee /tmp/contracts-node.log &
 
     - name: Test contracts
       run: cargo test --features e2e-tests
