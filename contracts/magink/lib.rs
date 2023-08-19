@@ -5,6 +5,8 @@ pub mod magink {
     use crate::ensure;
     use ink::storage::Mapping;
 
+    use ink::prelude::string::String;
+
     use ink::env::{
         call::{
             build_call,
@@ -14,6 +16,11 @@ pub mod magink {
         DefaultEnvironment,
     };
 
+    use openbrush::contracts::psp34::{
+        PSP34Error,
+        *,
+    };
+
     #[derive(Debug, PartialEq, Eq, scale::Encode, scale::Decode)]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub enum Error {
@@ -21,13 +28,13 @@ pub mod magink {
         UserNotFound,
         MintFailed,
         NotAllBadgesCollected,
-        MintTokenCallFailed,
     }
 
     #[ink(storage)]
     pub struct Magink {
         user: Mapping<AccountId, Profile>,
         wizard_contract_account_id: AccountId,
+        last_token_id: u64,
     }
 
     #[derive(
@@ -52,33 +59,25 @@ pub mod magink {
         /// Creates a new Magink smart contract.
         #[ink(constructor)]
         pub fn new(account_id: AccountId) -> Self {
+            // this place would be greate to transfer ownership of wizard to magink, but there is no onchain account exist at this moment
             Self {
                 user: Mapping::new(),
                 wizard_contract_account_id: account_id,
+                last_token_id: 1,
             }
         }
 
-        /// Mint Wizard NFT
+        /// Total supply of wizard tokens
         #[ink(message)]
-        pub fn mint_wizard(&self) -> Result<(), Error> {
-            ensure!(self.get_badges() > 0, Error::NotAllBadgesCollected); // assuming that exact number is configured in UI part
-
-            let caller = self.env().caller();
-            match build_call::<DefaultEnvironment>()
+        pub fn total_supply(&self) -> Balance {
+            build_call::<DefaultEnvironment>()
                 .call(self.wizard_contract_account_id)
                 .gas_limit(0)
-                .exec_input(
-                    ExecutionInput::new(Selector::new(ink::selector_bytes!(
-                        "mint_token"
-                    )))
-                    .push_arg(caller),
-                )
-                .returns::<()>()
-                .try_invoke()
-            {
-                Ok(Ok(_)) => Ok(()),
-                _ => Err(Error::MintTokenCallFailed),
-            }
+                .exec_input(ExecutionInput::new(Selector::new(ink::selector_bytes!(
+                    "get_total_supply"
+                ))))
+                .returns::<Balance>()
+                .invoke()
         }
 
         /// (Re)Start the Magink the claiming era for the caller.
@@ -106,6 +105,33 @@ pub mod magink {
 
             self.user.insert(self.env().caller(), &profile);
 
+            Ok(())
+        }
+
+        /// Mint Wizard NFT
+        #[ink(message)]
+        pub fn mint_wizard(&mut self) -> Result<(), PSP34Error> {
+            // assuming that exact number is configured in UI part
+            ensure!(
+                self.get_badges() > 0,
+                PSP34Error::Custom(String::from("NotAllBadgesCollected"))
+            );
+
+            let caller = self.env().caller();
+            build_call::<DefaultEnvironment>()
+                .call(self.wizard_contract_account_id)
+                .gas_limit(0)
+                .exec_input(
+                    ExecutionInput::new(Selector::new(ink::selector_bytes!(
+                        "PSP34Mintable::mint"
+                    )))
+                    .push_arg(caller)
+                    .push_arg(Id::U64(self.last_token_id)),
+                )
+                .returns::<Result<(), PSP34Error>>()
+                .invoke()?;
+
+            self.last_token_id += 1;
             Ok(())
         }
 
@@ -200,16 +226,6 @@ pub mod magink {
                 .expect("wizard contract instantiate failed")
                 .account_id;
 
-            let expected_total_supply = 1;
-            let actual_total_supply = {
-                let _msg = build_message::<WizardRef>(wizard_account_id.clone())
-                    .call(|contract| contract.total_supply());
-
-                client.call_dry_run(&ink_e2e::alice(), &_msg, 0, None).await
-            };
-
-            assert_eq!(expected_total_supply, actual_total_supply.return_value());
-
             // instantiate magink contract
             let magink_constructor = MaginkRef::new(wizard_account_id);
 
@@ -300,17 +316,6 @@ pub mod magink {
 
             assert!(result.is_ok());
 
-            let expected_total_supply = 1;
-            let actual_total_supply = {
-                let _msg = build_message::<WizardRef>(wizard_account_id.clone())
-                    .call(|contract| contract.total_supply());
-
-                client.call_dry_run(&ink_e2e::alice(), &_msg, 0, None).await
-            };
-
-            // this should be failed since after minting a new token the total supply should be increased, but it's not - why?
-            assert_eq!(expected_total_supply, actual_total_supply.return_value());
-
             Ok(())
         }
     }
@@ -382,7 +387,10 @@ pub mod magink {
 
             // mint wizard returns error since not all badges are collected
             assert!(magink.mint_wizard().is_err());
-            assert_eq!(magink.mint_wizard(), Err(Error::NotAllBadgesCollected));
+            assert_eq!(
+                magink.mint_wizard(),
+                Err(PSP34Error::Custom(String::from("NotAllBadgesCollected")))
+            );
 
             assert_eq!(Ok(()), magink.claim());
             assert_eq!(3, magink.get_remaining());

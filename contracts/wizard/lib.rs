@@ -39,7 +39,6 @@ pub mod wizard {
         #[storage_field]
         enumerable: enumerable::Data,
 
-        last_token_id: u64,
         max_supply: u64,
     }
 
@@ -68,12 +67,9 @@ pub mod wizard {
     #[overrider(PSP34Mintable)]
     #[openbrush::modifiers(only_owner)]
     fn mint(&mut self, account: AccountId, id: Id) -> Result<(), PSP34Error> {
-        if self.total_supply() >= self.max_supply as u128 {
+        if PSP34Impl::total_supply(self) as u64 >= self.max_supply {
             return Err(PSP34Error::Custom(String::from("CollectionFull")))
         }
-
-        self.last_token_id += 1;
-        let id = Id::U64(self.last_token_id);
 
         psp34::InternalImpl::_mint_to(self, account, id)
     }
@@ -109,11 +105,6 @@ pub mod wizard {
             );
 
             _instance.max_supply = max_supply;
-            _instance.last_token_id = 0;
-
-            let token_id = _instance.last_token_id;
-            PSP34Mintable::mint(&mut _instance, Self::env().caller(), Id::U64(token_id))
-                .expect("Can mint");
 
             _instance
         }
@@ -124,13 +115,8 @@ pub mod wizard {
         }
 
         #[ink(message)]
-        pub fn total_supply(&self) -> Balance {
+        pub fn get_total_supply(&self) -> Balance {
             PSP34Impl::total_supply(self)
-        }
-
-        #[ink(message)]
-        pub fn mint_token(&mut self, account: AccountId) -> Result<(), PSP34Error> {
-            PSP34Mintable::mint(self, account, Id::U64(self.last_token_id))
         }
 
         #[ink(message)]
@@ -227,7 +213,7 @@ pub mod wizard {
 
         use openbrush::contracts::psp34::*;
 
-        const MAX_SUPPLY: u64 = 5;
+        const MAX_SUPPLY: u64 = 3;
         const BASE_URI: &str = "https://bafybeibwbgwzqigw7touxmixxvkd3wfcf2rcljgbt75na7rwwnw4ojgljy.ipfs.nftstorage.link/";
 
         fn default_accounts() -> test::DefaultAccounts<ink::env::DefaultEnvironment> {
@@ -275,33 +261,28 @@ pub mod wizard {
             );
 
             assert_eq!(wizard.max_supply(), MAX_SUPPLY);
-            assert_eq!(wizard.last_token_id, 1);
-
-            assert_eq!(PSP34Impl::total_supply(&wizard), 1);
+            assert_eq!(wizard.get_total_supply(), 0);
         }
 
         #[ink::test]
         fn mint_works() {
             let mut wizard = init();
-            assert_eq!(wizard.total_supply(), 1);
+            assert_eq!(wizard.get_total_supply(), 0);
 
             let accounts = default_accounts();
             assert_eq!(Ownable::owner(&wizard).unwrap(), accounts.alice);
 
-            assert!(wizard.mint_token(accounts.bob).is_ok());
-            assert_eq!(wizard.total_supply(), 2);
+            assert!(PSP34Mintable::mint(&mut wizard, accounts.bob, Id::U64(1)).is_ok());
+            assert_eq!(wizard.get_total_supply(), 1);
 
-            assert_eq!(
-                PSP34Impl::owner_of(&wizard, Id::U64(wizard.last_token_id)),
-                Some(accounts.bob)
-            );
+            assert_eq!(PSP34Impl::owner_of(&wizard, Id::U64(1)), Some(accounts.bob));
 
             assert_eq!(
                 PSP34EnumerableImpl::owners_token_by_index(&wizard, accounts.bob, 0),
-                Ok(Id::U64(2))
+                Ok(Id::U64(1))
             );
 
-            assert_eq!(2, ink::env::test::recorded_events().count());
+            assert_eq!(1, ink::env::test::recorded_events().count());
         }
 
         #[ink::test]
@@ -309,21 +290,34 @@ pub mod wizard {
             let mut wizard = init();
             let accounts = default_accounts();
 
-            assert!(wizard.mint_token(accounts.bob).is_ok());
-            assert!(wizard.mint_token(accounts.bob).is_ok());
-            assert!(wizard.mint_token(accounts.bob).is_ok());
-            assert!(wizard.mint_token(accounts.bob).is_ok());
+            assert!(PSP34Mintable::mint(&mut wizard, accounts.bob, Id::U64(1)).is_ok());
+            assert!(PSP34Mintable::mint(&mut wizard, accounts.eve, Id::U64(2)).is_ok());
+            assert!(
+                PSP34Mintable::mint(&mut wizard, accounts.django, Id::U64(3)).is_ok()
+            );
 
-            assert_eq!(wizard.last_token_id, 5);
-            assert_eq!(wizard.total_supply(), 5);
+            assert_eq!(wizard.get_total_supply(), 3);
 
-            assert!(wizard.mint_token(accounts.bob).is_err());
-            assert_eq!(wizard.last_token_id, 5);
+            assert!(PSP34Mintable::mint(&mut wizard, accounts.eve, Id::U64(4)).is_err());
 
             assert_eq!(
-                wizard.mint_token(accounts.bob),
+                PSP34Mintable::mint(&mut wizard, accounts.eve, Id::U64(4)),
                 Err(PSP34Error::Custom(String::from("CollectionFull")))
             );
+
+            assert_eq!(3, ink::env::test::recorded_events().count());
+        }
+
+        #[ink::test]
+        fn transfer_ownership_works() {
+            let mut wizard = init();
+            let accounts = default_accounts();
+
+            assert_eq!(Ownable::owner(&wizard).unwrap(), accounts.alice);
+            assert!(Ownable::transfer_ownership(&mut wizard, accounts.bob).is_ok());
+
+            assert_ne!(Ownable::owner(&wizard).unwrap(), accounts.alice);
+            assert_eq!(Ownable::owner(&wizard).unwrap(), accounts.bob);
         }
 
         #[ink::test]
@@ -331,12 +325,12 @@ pub mod wizard {
             let mut wizard = init();
             let accounts = default_accounts();
 
-            assert!(wizard.mint_token(accounts.bob).is_ok());
+            assert!(PSP34Mintable::mint(&mut wizard, accounts.bob, Id::U64(1)).is_ok());
 
             assert_eq!(wizard.token_uri(42), Err(PSP34Error::TokenNotExists));
             assert_eq!(
-                wizard.token_uri(2),
-                Ok(String::from(BASE_URI.to_owned() + "2.json"))
+                wizard.token_uri(1),
+                Ok(String::from(BASE_URI.to_owned() + "1.json"))
             );
         }
 
@@ -345,10 +339,10 @@ pub mod wizard {
             let mut wizard = init();
             let accounts = default_accounts();
 
-            assert!(wizard.mint_token(accounts.bob).is_ok());
+            assert!(PSP34Mintable::mint(&mut wizard, accounts.bob, Id::U64(1)).is_ok());
 
             assert_eq!(wizard.token_name(42), Err(PSP34Error::TokenNotExists));
-            assert_eq!(wizard.token_name(2), Ok(String::from("Wizard34")));
+            assert_eq!(wizard.token_name(1), Ok(String::from("Wizard34")));
         }
 
         #[ink::test]
@@ -356,10 +350,10 @@ pub mod wizard {
             let mut wizard = init();
             let accounts = default_accounts();
 
-            assert!(wizard.mint_token(accounts.bob).is_ok());
+            assert!(PSP34Mintable::mint(&mut wizard, accounts.bob, Id::U64(1)).is_ok());
 
             assert_eq!(wizard.token_symbol(42), Err(PSP34Error::TokenNotExists));
-            assert_eq!(wizard.token_symbol(2), Ok(String::from("WZ34")));
+            assert_eq!(wizard.token_symbol(1), Ok(String::from("WZ34")));
         }
 
         #[ink::test]
@@ -368,6 +362,8 @@ pub mod wizard {
 
             let mut wizard = init();
             let accounts = default_accounts();
+
+            assert!(PSP34Mintable::mint(&mut wizard, accounts.alice, Id::U64(1)).is_ok());
             let collection_id = PSP34Impl::collection_id(&wizard);
 
             assert!(wizard.set_base_uri(NEW_BASE_URI.into()).is_ok());
@@ -394,6 +390,8 @@ pub mod wizard {
 
             let mut wizard = init();
             let accounts = default_accounts();
+
+            assert!(PSP34Mintable::mint(&mut wizard, accounts.alice, Id::U64(1)).is_ok());
             let collection_id = PSP34Impl::collection_id(&wizard);
 
             assert!(wizard.set_name(NEW_NAME.into()).is_ok());
@@ -428,12 +426,6 @@ pub mod wizard {
                 wizard.set_symbol(NEW_SYMBOL.into()),
                 Err(PSP34Error::Custom(String::from("O::CallerIsNotOwner")))
             );
-        }
-
-        #[ink::test]
-        fn max_supply_works() {
-            let wizard = init();
-            assert_eq!(wizard.max_supply(), 5);
         }
     }
 }
