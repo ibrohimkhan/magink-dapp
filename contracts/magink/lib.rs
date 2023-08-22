@@ -234,9 +234,7 @@ pub mod magink {
         }
 
         #[ink_e2e::test]
-        async fn e2e_mint_works(
-            mut client: ink_e2e::Client<C, E>,
-        ) -> E2EResult<()> {
+        async fn e2e_mint_works(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
             let max_supply: u64 = 10;
 
             // instantiate wizard contract
