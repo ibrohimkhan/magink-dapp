@@ -236,7 +236,7 @@ pub mod magink {
         #[ink_e2e::test]
         async fn e2e_mint_works(
             mut client: ink_e2e::Client<C, E>,
-        ) -> Result<(), PSP34Error> {
+        ) -> E2EResult<()> {
             let max_supply: u64 = 10;
 
             // instantiate wizard contract
@@ -278,6 +278,17 @@ pub mod magink {
 
             assert_eq!(owner_result, magink_account_id);
 
+            // check total supply
+            let total_supply = {
+                let msg = build_message::<MaginkRef>(magink_account_id.clone())
+                    .call(|contract| contract.total_supply());
+
+                client.call_dry_run(&ink_e2e::alice(), &msg, 0, None).await
+            }
+            .return_value();
+
+            assert_eq!(total_supply, 0);
+
             // start
             let start_msg = build_message::<MaginkRef>(magink_account_id.clone())
                 .call(|magink| magink.start(0));
@@ -311,9 +322,21 @@ pub mod magink {
                 .call(|magink| magink.mint_wizard());
 
             client
-                .call_dry_run(&ink_e2e::alice(), &mint_wizard_msg, 0, None)
+                .call(&ink_e2e::alice(), mint_wizard_msg, 0, None)
                 .await
-                .return_value()
+                .expect("minting new token failed");
+
+            let total_supply = {
+                let msg = build_message::<MaginkRef>(magink_account_id.clone())
+                    .call(|contract| contract.total_supply());
+
+                client.call_dry_run(&ink_e2e::alice(), &msg, 0, None).await
+            }
+            .return_value();
+
+            assert_eq!(total_supply, 1);
+
+            Ok(())
         }
     }
 
