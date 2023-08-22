@@ -3,6 +3,7 @@
 #[ink::contract]
 pub mod magink {
     use crate::ensure;
+
     use ink::storage::Mapping;
 
     use ink::prelude::string::String;
@@ -177,14 +178,6 @@ pub mod magink {
             self.user.get(caller)
         }
 
-        /// Update the profile of the caller
-        #[ink(message)]
-        pub fn set_profile(&mut self, profile: Profile) -> Result<(), Error> {
-            self.user.insert(self.env().caller(), &profile);
-
-            Ok(())
-        }
-
         /// Returns the badge of the caller.
         #[ink(message)]
         pub fn get_badges(&self) -> u8 {
@@ -205,16 +198,45 @@ pub mod magink {
     mod e2e_tests {
 
         use super::*;
+        use crate::address_of;
         use wizard::WizardRef;
 
-        use ink_e2e::build_message;
+        use ink_e2e::{
+            build_message,
+            PolkadotConfig,
+        };
 
         use openbrush::contracts::ownable::ownable_external::Ownable;
 
         type E2EResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
         #[ink_e2e::test]
-        async fn e2e_mint_works(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
+        async fn check_default_owner_of_the_wizard_contract(
+            mut client: ink_e2e::Client<C, E>,
+        ) -> E2EResult<()> {
+            let constructor = WizardRef::new(10);
+
+            let account_id = client
+                .instantiate("wizard", &ink_e2e::bob(), constructor, 0, None)
+                .await
+                .expect("instantiate failed")
+                .account_id;
+
+            let owner = {
+                let msg = build_message::<WizardRef>(account_id.clone())
+                    .call(|contract| contract.owner());
+                client.call_dry_run(&ink_e2e::bob(), &msg, 0, None).await
+            }
+            .return_value();
+
+            assert_eq!(owner, Some(address_of!(bob)));
+            Ok(())
+        }
+
+        #[ink_e2e::test]
+        async fn e2e_mint_works(
+            mut client: ink_e2e::Client<C, E>,
+        ) -> Result<(), PSP34Error> {
             let max_supply: u64 = 10;
 
             // instantiate wizard contract
@@ -258,65 +280,40 @@ pub mod magink {
 
             // start
             let start_msg = build_message::<MaginkRef>(magink_account_id.clone())
-                .call(|magink| magink.start(2));
+                .call(|magink| magink.start(0));
 
             client
                 .call(&ink_e2e::alice(), start_msg, 0, None)
                 .await
-                .expect("calling 'start' failed");
+                .expect("calling start failed");
 
-            let get_remaining_msg = build_message::<MaginkRef>(magink_account_id.clone())
-                .call(|magink| magink.get_remaining());
-
-            let remaining = client
-                .call_dry_run(&ink_e2e::alice(), &get_remaining_msg, 0, None)
-                .await
-                .return_value();
-
-            assert_eq!(remaining, 2);
-
+            // claim
             let claim_msg = build_message::<MaginkRef>(magink_account_id.clone())
                 .call(|magink| magink.claim());
 
-            let result = client
-                .call_dry_run(&ink_e2e::alice(), &claim_msg, 0, None)
-                .await
-                .return_value();
-
-            assert_eq!(result, Err(Error::TooEarlyToClaim));
-
-            // to pass the ensure check in mint_wizard we need to update user's profile
-            let get_profile_msg = build_message::<MaginkRef>(magink_account_id.clone())
-                .call(|magink| magink.get_profile());
-
-            let mut profile = client
-                .call_dry_run(&ink_e2e::alice(), &get_profile_msg, 0, None)
-                .await
-                .return_value()
-                .unwrap();
-
-            profile.badges_claimed += 2;
-
-            let set_profile_msg = build_message::<MaginkRef>(magink_account_id.clone())
-                .call(|magink| magink.set_profile(profile.clone()));
-
             client
-                .call(&ink_e2e::alice(), set_profile_msg, 0, None)
+                .call(&ink_e2e::alice(), claim_msg, 0, None)
                 .await
-                .expect("calling set_profile failed");
+                .expect("calling claim failed");
+
+            let badges = {
+                let msg = build_message::<MaginkRef>(magink_account_id.clone())
+                    .call(|magink| magink.get_badges());
+
+                client.call_dry_run(&ink_e2e::alice(), &msg, 0, None).await
+            }
+            .return_value();
+
+            assert_eq!(badges, 1);
 
             // mint new token
             let mint_wizard_msg = build_message::<MaginkRef>(magink_account_id.clone())
                 .call(|magink| magink.mint_wizard());
 
-            let result = client
+            client
                 .call_dry_run(&ink_e2e::alice(), &mint_wizard_msg, 0, None)
                 .await
-                .return_value();
-
-            assert!(result.is_ok());
-
-            Ok(())
+                .return_value()
         }
     }
 
@@ -411,32 +408,9 @@ pub mod magink {
             assert!(result.is_err());
         }
 
-        #[ink::test]
-        fn set_profile_works() {
-            let accounts = default_accounts();
-
-            let mut magink = Magink::new(AccountId::from([0x01; 32]));
-
-            set_sender(accounts.alice);
-            magink.start(2);
-
-            let mut profile = magink.get_profile().unwrap();
-            assert_eq!(profile.badges_claimed, 0);
-
-            profile.badges_claimed += 2;
-            assert!(magink.set_profile(profile).is_ok());
-
-            let profile = magink.get_profile().unwrap();
-            assert_eq!(profile.badges_claimed, 2);
-        }
-
         fn default_accounts(
         ) -> ink::env::test::DefaultAccounts<ink::env::DefaultEnvironment> {
             ink::env::test::default_accounts::<Environment>()
-        }
-
-        fn set_sender(sender: AccountId) {
-            ink::env::test::set_caller::<Environment>(sender);
         }
 
         fn advance_n_blocks(n: u32) {
@@ -461,4 +435,13 @@ macro_rules! ensure {
             return Err($y.into())
         }
     }};
+}
+
+#[macro_export]
+macro_rules! address_of {
+    ($account:ident) => {
+        ink::primitives::AccountId::from(
+            ink_e2e::$account::<PolkadotConfig>().account_id().0,
+        )
+    };
 }
