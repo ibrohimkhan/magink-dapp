@@ -1,7 +1,7 @@
 {
   "name": "magink",
   "version": "0.1.0",
-  "homepage": "https://github.com/ibrohimkhan/magink-dapp",
+  "homepage": "https://ibrohimkhan.github.io/magink-dapp/",
   "private": true,
   "dependencies": {
     "@headlessui/react": "^1.7.14",
