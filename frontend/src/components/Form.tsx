@@ -18,7 +18,7 @@ interface Props {
 
 export const MaginkForm = ({ awake, isAwake, remainingBlocks, runtimeError, badges }: Props) => {
   const { isSubmitting, isValid } = useFormikContext<Values>();
-  const { claimDryRun, magink } = useMaginkContract();
+  const { claimDryRun, mintDryRun, magink } = useMaginkContract();
   const { account } = useWallet();
   const { setShowConnectWallet } = useUI();
   const balance = useBalance(account);
@@ -41,7 +41,17 @@ export const MaginkForm = ({ awake, isAwake, remainingBlocks, runtimeError, badg
         </Button>
         </>
       )}
-
+      {account && isAwake && (
+        <>
+          <p>Press Mint NFT for minting a new wizard token</p>
+          <br />
+          <Button
+            type="button"
+            disabled={isSubmitting || !isValid || (remainingBlocks == 0 && badges >= 9)} onClick={awake}>
+            Mint NFT
+          </Button>
+        </>
+      )}
       <div className="group">
         {account && isAwake && (
           <>

@@ -79,9 +79,11 @@ For the development you can use `chains: [Development]` in [index.tsx](https://g
 
 The Magink! contract is deployed on Shibuya testnet at the following address:
 ```
-apJNVQJ5T4C5gZ1XRPw2MAHcUFxbuHch7BPGQuTyT8DHjeX
+YKjvGoGmG3Uc3dKzpZEnD6JCKNYofoiqJiNZH4kiiss1F25
 ```
 Its metadata can be [found here](./frontend/src/metadata.json). 
+
+Track your transactions through [subscan](https://shibuya.subscan.io/account/YKjvGoGmG3Uc3dKzpZEnD6JCKNYofoiqJiNZH4kiiss1F25)
 
 ## The frontend
 The frontend is build with [useink](https://github.com/paritytech/useink) library and uses template from [link!](https://use.ink/examples/dapps) example.

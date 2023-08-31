@@ -16,8 +16,10 @@ export const FormContainer = () => {
   const { account } = useWallet();
   const { showConnectWallet, setShowConnectWallet } = useUI();
   const { claim } = useMaginkContract();
+  const { mint } = useMaginkContract();
   const [isAwake, setIsAwake] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
+  const [isMinting, setIsMinting] = useState(false);
   const [remainingBlocks, setRemainingBlocks] = useState<number>(0);
   const [badges, setBadges] = useState<number>(0);
   const block = useBlockHeader();
@@ -57,6 +59,8 @@ export const FormContainer = () => {
       setBadges(badges.value.decoded);
       if (badges.value.decoded == 0) {
         startMagink();
+      } else if (badges.value.decoded == 9) {
+        mintMagink();
       } else {
         setIsAwake(true);
       }
@@ -86,6 +90,28 @@ export const FormContainer = () => {
     });
   };
 
+  const mintMagink = async () => {
+    console.log('mintMagink');
+    const options = undefined;
+    setIsMinting(true);
+    mint?.signAndSend([], options, (result: any, _api: any, error: any) => {
+      if (error) {
+        console.error(JSON.stringify(error));
+      }
+      console.log('result', result);
+      const dispatchError = mint.result?.dispatchError;
+
+      if (!result?.status.isInBlock) return;
+
+      if (dispatchError && magink?.contract) {
+        const errorMessage = decodeError(dispatchError, magink, undefined, 'Something went wrong');
+        console.log('errorMessage', errorMessage);
+      }
+      setIsAwake(true);
+      setIsMinting(false);
+    });
+  };
+
   return (
     <div className="App">
       <ConnectWallet show={showConnectWallet} onClose={() => setShowConnectWallet(false)} />
@@ -102,7 +128,8 @@ export const FormContainer = () => {
           ) : (
             <>
               {isStarting && (<Loader message="Initializing app for new user..." />)}
-              {!isStarting && (
+              {isMinting && (<Loader message="Minting a new NFT Wizard token for new user..." />)}
+              {!isStarting && !isMinting && (
                 <>
                   <Header />
                   <div className="content">
