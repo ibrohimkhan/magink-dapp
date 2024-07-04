@@ -8,8 +8,10 @@ interface MaginkContractState {
   magink?: ChainContract; 
   startDryRun?: DryRun<number>;
   claimDryRun?: DryRun<number>;
+  mintDryRun?: DryRun<number>;
   start?: Tx<number>;
   claim?: Tx<number>;
+  mint?: Tx<number>;
   getRemaining?: Call<number>;
   getRemainingFor?: Call<number>;
   getBadges?: Call<number>;
@@ -22,8 +24,10 @@ export function MaginkContractProvider({ children }: PropsWithChildren) {
   const magink = useContract(CONTRACT_ADDRESS, metadata);
   const claimDryRun = useDryRun<number>(magink, 'claim');
   const startDryRun = useDryRun<number>(magink, 'start');
+  const mintDryRun = useDryRun<number>(magink, 'mintWizard');
   const claim = useTx(magink, 'claim');
   const start = useTx(magink, 'start');
+  const mint = useTx(magink, 'mintWizard');
   const getRemaining = useCall<number>(magink, 'getRemaining');
   const getBadges = useCall<number>(magink, 'getBadges');
   const getBadgesFor = useCall<number>(magink, 'getBadgesFor');
@@ -32,7 +36,7 @@ export function MaginkContractProvider({ children }: PropsWithChildren) {
   useTxNotifications(start);
 
   return (
-    <MaginkContractContext.Provider value={{ magink, startDryRun, claimDryRun, start, claim, getRemaining, getRemainingFor, getBadges, getBadgesFor }}>
+    <MaginkContractContext.Provider value={{ magink, startDryRun, claimDryRun, mintDryRun, start, claim, mint, getRemaining, getRemainingFor, getBadges, getBadgesFor }}>
       {children}
     </MaginkContractContext.Provider>
   );
